@@ -77,7 +77,7 @@ func GetRangeReaderFromLink(size int64, link *model.Link) (model.RangeReaderIF, 
 
 		response, err := net.RequestHttp(ctx, "GET", header, link.URL)
 		if err != nil {
-			if _, ok := errors.Unwrap(err).(net.ErrorHttpStatusCode); ok {
+			if _, ok := errors.Unwrap(err).(net.HttpStatusCodeError); ok {
 				return nil, err
 			}
 			return nil, fmt.Errorf("http request failure, err:%w", err)
@@ -198,6 +198,21 @@ func NewStreamSectionReader(file model.FileStreamer, maxBufferSize int, up *mode
 		return nil
 	}))
 	return ss, nil
+}
+
+// 线程不安全
+func (ss *StreamSectionReader) DiscardSection(off int64, length int64) error {
+	if ss.file.GetFile() == nil {
+		if off != ss.off {
+			return fmt.Errorf("stream not cached: request offset %d != current offset %d", off, ss.off)
+		}
+		_, err := utils.CopyWithBufferN(io.Discard, ss.file, length)
+		if err != nil {
+			return fmt.Errorf("failed to skip data: (expect =%d) %w", length, err)
+		}
+	}
+	ss.off += length
+	return nil
 }
 
 // 线程不安全
